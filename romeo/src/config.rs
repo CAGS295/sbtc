@@ -5,15 +5,7 @@ use std::{
     path::{Path, PathBuf},
 };
 
-use bdk::bitcoin::{self, schnorr, secp256k1, PrivateKey};
-use blockstack_lib::{
-    address::{
-        AddressHashMode, C32_ADDRESS_VERSION_MAINNET_SINGLESIG,
-        C32_ADDRESS_VERSION_TESTNET_SINGLESIG,
-    },
-    types::chainstate::{StacksAddress, StacksPrivateKey, StacksPublicKey},
-    vm::ContractName,
-};
+use blockstack_lib::vm::ContractName;
 use clap::Parser;
 use stacks_core::{
     wallet::{BitcoinCredentials, Credentials, Wallet},
