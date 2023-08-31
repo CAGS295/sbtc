@@ -5,6 +5,7 @@ use std::time::Duration;
 use bdk::bitcoin;
 use bdk::esplora_client;
 use futures::Future;
+use tracing::debug;
 use tracing::trace;
 
 use crate::event;
@@ -55,7 +56,8 @@ impl BitcoinClient {
     pub async fn fetch_block(&self, block_height: u32) -> anyhow::Result<bitcoin::Block> {
         let mut current_height = retry(|| self.client.get_height()).await?;
 
-        trace!("Looking for block height: {}", current_height + 1);
+        debug!("Looking for block height: {}", current_height + 1);
+
         while current_height < block_height {
             tokio::time::sleep(BLOCK_POLLING_INTERVAL).await;
             current_height = retry(|| self.client.get_height()).await?;
