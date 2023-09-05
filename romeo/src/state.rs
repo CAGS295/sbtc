@@ -306,8 +306,33 @@ fn convert_principal_data(data: stacks_core::utils::PrincipalData) -> PrincipalD
 }
 
 fn parse_withdrawals(_block: &Block) -> Vec<Withdrawal> {
-    // TODO: #68
-    vec![]
+    let block_height = block
+        .bip34_block_height()
+        .expect("Failed to get block height") as u32;
+
+    block
+        .txdata
+        .iter()
+        .cloned()
+        .filter_map(|tx| {
+            let txid = tx.txid();
+
+            op_return::withdrawal_request::WithdrawalRequest::parse(config.private_key.network, tx)
+                .ok()
+                .map(|parsed_withdrawal_request| Deposit {
+                    info: WithdrawalInfo {
+                        txid,
+                        amount: parsed_withdrawal_request.amount,
+                        source: todo!(
+                            "How do we get the public key from the recoverable signature?"
+                        ),
+                        recipient: parsed_withdrawal_request.recipient,
+                        block_height,
+                    },
+                    mint: None,
+                })
+        })
+        .collect()
 }
 
 fn process_bitcoin_transaction_update(
