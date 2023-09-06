@@ -8,6 +8,7 @@ use blockstack_lib::codec::StacksMessageCodec;
 use blockstack_lib::types::chainstate::StacksAddress;
 use blockstack_lib::vm::types::PrincipalData;
 use sbtc_core::operations::op_return;
+use sbtc_core::operations::op_return::withdrawal_request::WithdrawalRequest;
 use stacks_core::codec::Codec;
 use tracing::debug;
 
@@ -197,7 +198,7 @@ pub fn update(config: &Config, state: State, event: Event) -> (State, Vec<Task>)
 
 fn process_bitcoin_block(config: &Config, mut state: State, block: Block) -> (State, Vec<Task>) {
     let deposits = parse_deposits(config, &block);
-    let withdrawals = parse_withdrawals(&block);
+    let withdrawals = parse_withdrawals(config, &block);
 
     state.deposits.extend_from_slice(&deposits);
     state.withdrawals.extend_from_slice(&withdrawals);
@@ -305,7 +306,7 @@ fn convert_principal_data(data: stacks_core::utils::PrincipalData) -> PrincipalD
     PrincipalData::consensus_deserialize(&mut Cursor::new(bytes)).unwrap()
 }
 
-fn parse_withdrawals(_block: &Block) -> Vec<Withdrawal> {
+fn parse_withdrawals(config: &Config, block: &Block) -> Vec<Withdrawal> {
     let block_height = block
         .bip34_block_height()
         .expect("Failed to get block height") as u32;
@@ -319,18 +320,32 @@ fn parse_withdrawals(_block: &Block) -> Vec<Withdrawal> {
 
             op_return::withdrawal_request::WithdrawalRequest::parse(config.private_key.network, tx)
                 .ok()
-                .map(|parsed_withdrawal_request| Deposit {
-                    info: WithdrawalInfo {
-                        txid,
-                        amount: parsed_withdrawal_request.amount,
-                        source: todo!(
-                            "How do we get the public key from the recoverable signature?"
-                        ),
-                        recipient: parsed_withdrawal_request.recipient,
-                        block_height,
+                .map(
+                    |WithdrawalRequest {
+                         recipient,
+                         source,
+                         amount,
+                         fulfillment_amount,
+                         peg_wallet,
+                     }| {
+                        let blockstack_lib_address = StacksAddress::consensus_deserialize(
+                            &mut Cursor::new(source.serialize_to_vec()),
+                        )
+                        .unwrap();
+
+                        Withdrawal {
+                            info: WithdrawalInfo {
+                                txid,
+                                amount,
+                                source: blockstack_lib_address,
+                                recipient,
+                                block_height,
+                            },
+                            burn: None,
+                            fulfillment: None,
+                        }
                     },
-                    mint: None,
-                })
+                )
         })
         .collect()
 }

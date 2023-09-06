@@ -114,3 +114,19 @@ impl Codec for u64 {
         Ok(Self::from_be_bytes(bytes))
     }
 }
+
+impl Codec for bitcoin::Script {
+    fn codec_serialize<W: io::Write>(&self, dest: &mut W) -> io::Result<()> {
+        dest.write_all(self.as_bytes())
+    }
+
+    fn codec_deserialize<R: io::Read>(data: &mut R) -> io::Result<Self>
+    where
+        Self: Sized,
+    {
+        let mut buffer = vec![];
+        data.read_to_end(&mut buffer)?;
+
+        Ok(Self::from(buffer))
+    }
+}
