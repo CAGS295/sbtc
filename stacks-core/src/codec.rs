@@ -5,7 +5,7 @@ use std::io;
 
 use bdk::bitcoin::{
     secp256k1::ecdsa::{RecoverableSignature, RecoveryId},
-    Amount,
+    Amount, Script,
 };
 use thiserror::Error;
 
@@ -115,7 +115,7 @@ impl Codec for u64 {
     }
 }
 
-impl Codec for bitcoin::Script {
+impl Codec for Script {
     fn codec_serialize<W: io::Write>(&self, dest: &mut W) -> io::Result<()> {
         dest.write_all(self.as_bytes())
     }

@@ -28,8 +28,8 @@ pub fn broadcast_tx(broadcast: &BroadcastArgs) -> anyhow::Result<()> {
     serde_json::to_writer_pretty(
         stdout(),
         &utils::TransactionData {
-            tx_id: tx.txid().to_string(),
-            tx_hex: hex::encode(tx.serialize()),
+            id: tx.txid().to_string(),
+            hex: hex::encode(tx.serialize()),
         },
     )?;
 

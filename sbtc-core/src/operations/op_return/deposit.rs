@@ -291,6 +291,7 @@ mod tests {
     use stacks_core::{
         address::{AddressVersion, StacksAddress},
         contract_name::{ContractName, CONTRACT_MAX_NAME_LENGTH},
+        crypto::Secp256k1,
         utils::{PrincipalData, StandardPrincipalData},
     };
 

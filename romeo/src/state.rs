@@ -8,7 +8,7 @@ use blockstack_lib::codec::StacksMessageCodec;
 use blockstack_lib::types::chainstate::StacksAddress;
 use blockstack_lib::vm::types::PrincipalData;
 use sbtc_core::operations::op_return;
-use sbtc_core::operations::op_return::withdrawal_request::WithdrawalRequest;
+use sbtc_core::operations::op_return::withdrawal_request::WithdrawalRequestData;
 use stacks_core::codec::Codec;
 use tracing::debug;
 
@@ -318,34 +318,37 @@ fn parse_withdrawals(config: &Config, block: &Block) -> Vec<Withdrawal> {
         .filter_map(|tx| {
             let txid = tx.txid();
 
-            op_return::withdrawal_request::WithdrawalRequest::parse(config.private_key.network, tx)
-                .ok()
-                .map(
-                    |WithdrawalRequest {
-                         recipient,
-                         source,
-                         amount,
-                         fulfillment_amount,
-                         peg_wallet,
-                     }| {
-                        let blockstack_lib_address = StacksAddress::consensus_deserialize(
-                            &mut Cursor::new(source.serialize_to_vec()),
-                        )
-                        .unwrap();
+            op_return::withdrawal_request::WithdrawalRequestData::parse(
+                config.bitcoin_credentials.network(),
+                tx,
+            )
+            .ok()
+            .map(
+                |WithdrawalRequestData {
+                     recipient,
+                     // source,
+                     amount,
+                     fulfillment_amount,
+                     peg_wallet,
+                 }| {
+                    let blockstack_lib_address = StacksAddress::consensus_deserialize(
+                        &mut Cursor::new(source.serialize_to_vec()),
+                    )
+                    .unwrap();
 
-                        Withdrawal {
-                            info: WithdrawalInfo {
-                                txid,
-                                amount,
-                                source: blockstack_lib_address,
-                                recipient,
-                                block_height,
-                            },
-                            burn: None,
-                            fulfillment: None,
-                        }
-                    },
-                )
+                    Withdrawal {
+                        info: WithdrawalInfo {
+                            txid,
+                            amount,
+                            source: blockstack_lib_address,
+                            recipient,
+                            block_height,
+                        },
+                        burn: None,
+                        fulfillment: None,
+                    }
+                },
+            )
         })
         .collect()
 }
