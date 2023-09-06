@@ -8,7 +8,7 @@ use bdk::bitcoin::{
     secp256k1::PublicKey,
 };
 use serde::Serialize;
-use strum::{EnumIter, FromRepr};
+use strum::{EnumIter, EnumString, FromRepr};
 
 use crate::{
     c32::{decode_address, encode_address},
@@ -33,6 +33,40 @@ pub enum AddressVersion {
     TestnetSingleSig = 26,
     /// Testnet multi sig address version
     TestnetMultiSig = 21,
+}
+
+/// Supported stacks address versions
+#[repr(u8)]
+#[derive(FromRepr, EnumIter, EnumString, PartialEq, Eq, Copy, Clone, Debug)]
+#[strum(ascii_case_insensitive)]
+pub enum AddressKind {
+    /// Pay to public key hash
+    P2PKH = 0,
+    /// Pay to script hash
+    P2SH = 1,
+    /// Pay to witness public key hash
+    P2WPKH = 2,
+    /// Pay to witness script hash
+    P2WSH = 3,
+}
+
+impl Codec for AddressKind {
+    fn codec_serialize<W: io::Write>(&self, dest: &mut W) -> io::Result<()> {
+        dest.write_all(&[*self as u8])
+    }
+
+    fn codec_deserialize<R: io::Read>(data: &mut R) -> io::Result<Self>
+    where
+        Self: Sized,
+    {
+        let mut buffer = [u8::MAX; 1];
+        data.read_exact(&mut buffer)?;
+
+        Self::from_repr(buffer[0]).ok_or(io::Error::new(
+            io::ErrorKind::InvalidData,
+            "Invalid address kind",
+        ))
+    }
 }
 
 impl TryFrom<u8> for AddressVersion {
@@ -93,6 +127,20 @@ impl StacksAddress {
         signature_threshold: usize,
     ) -> Self {
         Self::new(version, hash_p2wsh(keys, signature_threshold))
+    }
+
+    /// Create a Stacks address from version, kind, and key components.
+    pub fn from_components_single_sig(
+        version: AddressVersion,
+        kind: AddressKind,
+        key: &PublicKey,
+    ) -> Self {
+        match kind {
+            AddressKind::P2PKH => Self::p2pkh(version, key),
+            AddressKind::P2SH => Self::p2sh(version, Some(key), 1),
+            AddressKind::P2WPKH => Self::p2wpkh(version, key),
+            AddressKind::P2WSH => Self::p2wsh(version, Some(key), 1),
+        }
     }
 }
 

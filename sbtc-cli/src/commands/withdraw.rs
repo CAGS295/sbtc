@@ -1,13 +1,9 @@
 use std::{io::stdout, str::FromStr};
 
-use bdk::{
-    bitcoin::{psbt::serialize::Serialize, Address as BitcoinAddress, PrivateKey},
-    SignOptions,
-};
+use bdk::bitcoin::{psbt::serialize::Serialize, Address as BitcoinAddress, PrivateKey};
 use clap::Parser;
-use sbtc_core::operations::op_return::withdrawal_request::WithdrawalRequestData;
+use stacks_core::address::AddressKind as StacksAddressKind;
 
-use crate::commands::utils::setup_wallet;
 use crate::commands::utils::TransactionData;
 
 #[derive(Parser, Debug, Clone)]
@@ -19,6 +15,10 @@ pub struct WithdrawalArgs {
     /// WIF of the Stacks address that owns sBTC to be withdrawn
     #[clap(short, long)]
     drawee_wif: String,
+
+    /// Kind of the Stacks address that owns sBTC to be withdrawn
+    #[clap(short('k'), long, default_value = "P2PKH")]
+    drawee_address_kind: StacksAddressKind,
 
     /// Bitcoin address that will receive BTC
     #[clap(short('b'), long)]
@@ -38,28 +38,20 @@ pub struct WithdrawalArgs {
 }
 
 pub fn build_withdrawal_tx(withdrawal: &WithdrawalArgs) -> anyhow::Result<()> {
-    let private_key = PrivateKey::from_wif(&withdrawal.wif)?;
-    let wallet = setup_wallet(private_key)?;
+    let broadcaster_bitcoin_private_key = PrivateKey::from_wif(&withdrawal.wif)?;
+    let drawee_stacks_private_key = PrivateKey::from_wif(&withdrawal.drawee_wif)?.inner;
+    let payee_bitcoin_address = BitcoinAddress::from_str(&withdrawal.payee_address)?;
+    let peg_wallet_bitcoin_address = BitcoinAddress::from_str(&withdrawal.peg_wallet)?;
 
-    let sender_private_key = PrivateKey::from_wif(&withdrawal.drawee_wif)?.inner;
-    let recipient = BitcoinAddress::from_str(&withdrawal.payee_address)?;
-    let dkg_address = BitcoinAddress::from_str(&withdrawal.peg_wallet)?;
-
-    let withdrawal_data = WithdrawalRequestData {
-        recipient,
-        amount: withdrawal.amount,
-        fulfillment_amount: withdrawal.fulfillment_fee,
-        peg_wallet: dkg_address,
-    };
-
-    let mut psbt = withdrawal_data.create_partially_signed_transaction(
-        &wallet,
-        private_key.network,
-        &sender_private_key,
+    let tx = sbtc_core::operations::op_return::withdrawal_request::build_withdrawal_tx(
+        broadcaster_bitcoin_private_key,
+        drawee_stacks_private_key,
+        withdrawal.drawee_address_kind,
+        payee_bitcoin_address,
+        peg_wallet_bitcoin_address,
+        withdrawal.amount,
+        withdrawal.fulfillment_fee,
     )?;
-
-    wallet.sign(&mut psbt, SignOptions::default())?;
-    let tx = psbt.extract_tx();
 
     serde_json::to_writer_pretty(
         stdout(),
