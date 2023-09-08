@@ -2,7 +2,6 @@ use std::{io::stdout, str::FromStr};
 
 use bdk::bitcoin::{psbt::serialize::Serialize, Address as BitcoinAddress, PrivateKey};
 use clap::Parser;
-use stacks_core::address::AddressKind as StacksAddressKind;
 
 use crate::commands::utils::TransactionData;
 
@@ -15,10 +14,6 @@ pub struct WithdrawalArgs {
     /// WIF of the Stacks address that owns sBTC to be withdrawn
     #[clap(short, long)]
     drawee_wif: String,
-
-    /// Kind of the Stacks address that owns sBTC to be withdrawn
-    #[clap(short('k'), long, default_value = "P2PKH")]
-    drawee_address_kind: StacksAddressKind,
 
     /// Bitcoin address that will receive BTC
     #[clap(short('b'), long)]
@@ -46,7 +41,6 @@ pub fn build_withdrawal_tx(withdrawal: &WithdrawalArgs) -> anyhow::Result<()> {
     let tx = sbtc_core::operations::op_return::withdrawal_request::build_withdrawal_tx(
         broadcaster_bitcoin_private_key,
         drawee_stacks_private_key,
-        withdrawal.drawee_address_kind,
         payee_bitcoin_address,
         peg_wallet_bitcoin_address,
         withdrawal.amount,
