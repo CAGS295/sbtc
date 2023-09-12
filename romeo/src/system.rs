@@ -11,6 +11,7 @@ use blockstack_lib::types::chainstate::StacksAddress;
 use blockstack_lib::types::chainstate::StacksPublicKey;
 
 use blockstack_lib::vm::ClarityName;
+use blockstack_lib::vm::ContractName;
 use stacks_core::codec::Codec;
 use tokio::fs::File;
 use tokio::fs::OpenOptions;
@@ -134,8 +135,11 @@ fn spawn(
     debug!("Spawning task");
 
     tokio::task::spawn(async move {
-        let event = run_task(&config, bitcoin_client, stacks_client, task).await;
-        result.send(event).await.expect("Failed to return event");
+        let events = run_task(&config, bitcoin_client, stacks_client, task).await;
+
+        for event in events {
+            result.send(event).await.expect("Failed to return event");
+        }
     })
 }
 
@@ -144,7 +148,7 @@ async fn run_task(
     bitcoin_client: BitcoinClient,
     stacks_client: LockedClient,
     task: Task,
-) -> Event {
+) -> Vec<Event> {
     match task {
         Task::CreateAssetContract => deploy_asset_contract(config, stacks_client).await,
         Task::CreateMint(deposit_info) => {
@@ -163,33 +167,49 @@ async fn run_task(
     }
 }
 
-async fn deploy_asset_contract(config: &Config, client: LockedClient) -> Event {
-    let contract_bytes = tokio::fs::read_to_string(&config.contract).await.unwrap();
+async fn deploy_asset_contract(config: &Config, client: LockedClient) -> Vec<Event> {
+    let mut events = vec![];
+    let mut names_to_replace: Vec<ContractName> = vec![];
 
-    let public_key =
-        StacksPublicKey::from_slice(&config.stacks_credentials.public_key().serialize()).unwrap();
+    for (name, contract) in &config.contracts {
+        let mut contract_bytes = tokio::fs::read_to_string(contract).await.unwrap();
 
-    let tx_auth = TransactionAuth::Standard(
-        TransactionSpendingCondition::new_singlesig_p2pkh(public_key).unwrap(),
-    );
-    let tx_payload = TransactionPayload::SmartContract(
-        TransactionSmartContract {
-            name: config.contract_name.clone(),
-            code_body: StacksString::from_string(&contract_bytes).unwrap(),
-        },
-        None,
-    );
+        // Replace the contract name in the contract with the namespaced contract name
+        let file_stem = contract.file_stem().unwrap().to_str().unwrap();
+        names_to_replace.iter().for_each(|name| {
+            contract_bytes = contract_bytes.replace(file_stem, &name.to_string());
+        });
 
-    let tx = StacksTransaction::new(TransactionVersion::Testnet, tx_auth, tx_payload);
+        let public_key =
+            StacksPublicKey::from_slice(&config.stacks_credentials.public_key().serialize())
+                .unwrap();
 
-    let txid = client
-        .lock()
-        .await
-        .sign_and_broadcast(tx)
-        .await
-        .expect("Unable to sign and broadcast the asset contract deployment transaction");
+        let tx_auth = TransactionAuth::Standard(
+            TransactionSpendingCondition::new_singlesig_p2pkh(public_key).unwrap(),
+        );
+        let tx_payload = TransactionPayload::SmartContract(
+            TransactionSmartContract {
+                name: name.clone(),
+                code_body: StacksString::from_string(&contract_bytes).unwrap(),
+            },
+            None,
+        );
 
-    Event::AssetContractBroadcasted(txid)
+        let tx = StacksTransaction::new(TransactionVersion::Testnet, tx_auth, tx_payload);
+
+        events.push(Event::AssetContractBroadcasted(
+            client
+                .lock()
+                .await
+                .sign_and_broadcast(tx)
+                .await
+                .expect("Unable to sign and broadcast the asset contract deployment transaction"),
+        ));
+
+        names_to_replace.push(name.clone());
+    }
+
+    events
 }
 
 async fn mint_asset(
@@ -197,7 +217,7 @@ async fn mint_asset(
     bitcoin_client: BitcoinClient,
     stacks_client: LockedClient,
     deposit_info: DepositInfo,
-) -> Event {
+) -> Vec<Event> {
     let block = bitcoin_client
         .fetch_block(deposit_info.block_height)
         .await
@@ -248,14 +268,14 @@ async fn mint_asset(
         .await
         .expect("Unable to sign and broadcast the mint transaction");
 
-    Event::MintBroadcasted(deposit_info, txid)
+    vec![Event::MintBroadcasted(deposit_info, txid)]
 }
 
-async fn check_bitcoin_transaction_status(_config: &Config, _txid: BitcoinTxId) -> Event {
+async fn check_bitcoin_transaction_status(_config: &Config, _txid: BitcoinTxId) -> Vec<Event> {
     todo!();
 }
 
-async fn check_stacks_transaction_status(client: LockedClient, txid: StacksTxId) -> Event {
+async fn check_stacks_transaction_status(client: LockedClient, txid: StacksTxId) -> Vec<Event> {
     let status = client
         .lock()
         .await
@@ -263,10 +283,10 @@ async fn check_stacks_transaction_status(client: LockedClient, txid: StacksTxId)
         .await
         .expect("Could not get transaction status");
 
-    Event::StacksTransactionUpdate(txid, status)
+    vec![Event::StacksTransactionUpdate(txid, status)]
 }
 
-async fn fetch_bitcoin_block(client: BitcoinClient, block_height: Option<u32>) -> Event {
+async fn fetch_bitcoin_block(client: BitcoinClient, block_height: Option<u32>) -> Vec<Event> {
     let block_height = if let Some(height) = block_height {
         height
     } else {
@@ -281,7 +301,7 @@ async fn fetch_bitcoin_block(client: BitcoinClient, block_height: Option<u32>) -
         .await
         .expect("Failed to fetch block");
 
-    Event::BitcoinBlock(block)
+    vec![Event::BitcoinBlock(block)]
 }
 
 #[cfg(test)]

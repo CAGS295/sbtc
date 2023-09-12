@@ -20,7 +20,7 @@ use crate::task::Task;
 /// The whole state of the application
 #[derive(Debug, Default, serde::Serialize, serde::Deserialize)]
 pub struct State {
-    contract: Option<TransactionRequest<StacksTxId>>,
+    contracts: Option<Vec<TransactionRequest<StacksTxId>>>,
     deposits: Vec<Deposit>,
     withdrawals: Vec<Withdrawal>,
     block_height: Option<u32>,
@@ -154,9 +154,9 @@ pub fn bootstrap(mut state: State) -> (State, Task) {
         }
     });
 
-    match state.contract {
+    match state.contracts {
         None => {
-            state.contract = Some(TransactionRequest::Created);
+            state.contracts = Some(Vec::new());
 
             (state, Task::CreateAssetContract)
         }
@@ -218,32 +218,50 @@ fn process_bitcoin_block(config: &Config, mut state: State, block: Block) -> (St
 }
 
 fn create_transaction_status_update_requests(state: &mut State) -> Vec<Task> {
-    match state.contract.as_mut() {
-        None | Some(TransactionRequest::Created) => vec![],
-        Some(TransactionRequest::Acknowledged {
-            txid,
-            status: TransactionStatus::Broadcasted,
-            has_pending_task,
-        }) => {
-            if !*has_pending_task {
-                *has_pending_task = true;
-                vec![Task::CheckStacksTransactionStatus(*txid)]
-            } else {
-                vec![]
+    let mut tasks = vec![];
+
+    let Some(contracts) = state.contracts.as_mut() else {
+        return tasks;
+    };
+
+    for contract in contracts.iter_mut() {
+        match contract {
+            TransactionRequest::Acknowledged {
+                txid,
+                status: TransactionStatus::Broadcasted,
+                has_pending_task,
+            } => {
+                if !*has_pending_task {
+                    *has_pending_task = true;
+                    tasks.push(Task::CheckStacksTransactionStatus(*txid));
+                }
             }
-        }
-        Some(TransactionRequest::Acknowledged {
-            status: TransactionStatus::Confirmed,
-            ..
-        }) => create_transaction_status_update_tasks(state),
-        Some(TransactionRequest::Acknowledged {
-            txid,
-            status: TransactionStatus::Rejected,
-            ..
-        }) => {
-            panic!("Contract creation transaction rejected: {}", txid)
-        }
+            TransactionRequest::Acknowledged {
+                txid,
+                status: TransactionStatus::Rejected,
+                ..
+            } => {
+                panic!("Contract creation transaction rejected: {}", txid)
+            }
+            _ => {}
+        };
     }
+
+    let contracts_deployed = contracts.iter().all(|contract| {
+        matches!(
+            contract,
+            TransactionRequest::Acknowledged {
+                status: TransactionStatus::Confirmed,
+                ..
+            }
+        )
+    });
+
+    if contracts_deployed {
+        tasks.extend(create_transaction_status_update_tasks(state));
+    }
+
+    tasks
 }
 
 fn create_transaction_status_update_tasks(state: &mut State) -> Vec<Task> {
@@ -412,25 +430,29 @@ fn process_stacks_transaction_update(
         );
     }
 
-    let tasks = {
-        let Some(TransactionRequest::Acknowledged {
+    let mut tasks = vec![];
+
+    let Some(contracts) = state.contracts.as_ref() else {
+        panic!("Contract transactions should be in state");
+    };
+
+    for request in contracts {
+        let TransactionRequest::Acknowledged {
             txid: contract_txid,
             status: contract_status,
             ..
-        }) = state.contract.as_ref()
+        } = request
         else {
-            panic!("Contract transaction should be acknowledged and broadcasted first");
+            panic!("Contract transactions should be broadcasted and acknowledged");
         };
 
         if txid == *contract_txid
             && *contract_status == TransactionStatus::Broadcasted
             && state.block_height.is_none()
         {
-            vec![Task::FetchBitcoinBlock(None)]
-        } else {
-            vec![]
+            tasks.push(Task::FetchBitcoinBlock(None));
         }
-    };
+    }
 
     (state, tasks)
 }
@@ -438,7 +460,7 @@ fn process_stacks_transaction_update(
 fn get_mut_transaction_requests(
     state: &mut State,
 ) -> impl Iterator<Item = &mut TransactionRequest<StacksTxId>> {
-    let contract_response = state.contract.as_mut().into_iter();
+    let contract_response = state.contracts.as_mut().into_iter().flatten();
 
     let deposit_responses = state
         .deposits
@@ -461,11 +483,19 @@ fn process_asset_contract_broadcasted(
     mut state: State,
     txid: StacksTxId,
 ) -> (State, Vec<Task>) {
-    state.contract = Some(TransactionRequest::Acknowledged {
-        txid,
-        status: TransactionStatus::Broadcasted,
-        has_pending_task: true,
-    });
+    if state.contracts.is_none() {
+        state.contracts = Some(vec![]);
+    }
+
+    state
+        .contracts
+        .as_mut()
+        .unwrap()
+        .push(TransactionRequest::Acknowledged {
+            txid,
+            status: TransactionStatus::Broadcasted,
+            has_pending_task: true,
+        });
 
     (state, vec![Task::CheckStacksTransactionStatus(txid)])
 }

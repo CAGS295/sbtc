@@ -28,7 +28,7 @@ pub struct Config {
     pub state_directory: PathBuf,
 
     /// Path to the contract file
-    pub contract: PathBuf,
+    pub contracts: Vec<(ContractName, PathBuf)>,
 
     /// Credentials used to interact with the Stacks network
     pub stacks_credentials: Credentials,
@@ -56,7 +56,21 @@ impl Config {
 
         let config_file = ConfigFile::from_path(&path)?;
         let state_directory = normalize(config_root.clone(), config_file.state_directory);
-        let contract = normalize(config_root, config_file.contract);
+        let contracts: Vec<(ContractName, PathBuf)> = config_file
+            .contracts
+            .iter()
+            .map(|path| {
+                let contract_name_string = format!(
+                    "{}-{}",
+                    config_file.contract_namespace,
+                    path.file_stem().unwrap().to_str().unwrap()
+                );
+                let contract_name = ContractName::from(contract_name_string.as_str());
+
+                (contract_name, normalize(&config_root, path))
+            })
+            .collect();
+        let contract_name = contracts.last().unwrap().0.clone();
         let bitcoin_node_url = reqwest::Url::parse(&config_file.bitcoin_node_url)?;
         let stacks_node_url = reqwest::Url::parse(&config_file.stacks_node_url)?;
 
@@ -66,19 +80,19 @@ impl Config {
 
         Ok(Self {
             state_directory,
-            contract,
+            contracts,
             bitcoin_credentials,
             stacks_credentials,
             bitcoin_node_url,
             stacks_node_url,
-            contract_name: ContractName::from(config_file.contract_name.as_str()),
+            contract_name,
         })
     }
 }
 
-fn normalize(root_dir: PathBuf, path: impl AsRef<Path>) -> PathBuf {
+fn normalize(root_dir: impl AsRef<Path>, path: impl AsRef<Path>) -> PathBuf {
     if path.as_ref().is_relative() {
-        root_dir.join(path)
+        root_dir.as_ref().to_owned().join(path)
     } else {
         path.as_ref().into()
     }
@@ -90,7 +104,7 @@ struct ConfigFile {
     pub state_directory: PathBuf,
 
     /// Path to the contract file
-    pub contract: PathBuf,
+    pub contracts: Vec<PathBuf>,
 
     /// Stacks network
     pub network: Network,
@@ -105,7 +119,7 @@ struct ConfigFile {
     pub stacks_node_url: String,
 
     /// sBTC asset contract name
-    pub contract_name: String,
+    pub contract_namespace: String,
 }
 
 impl ConfigFile {
