@@ -10,6 +10,6 @@ FROM node:16-alpine
 WORKDIR /workspace
 RUN apk --update add git curl
 COPY --from=builder /workspace .
-COPY entrypoint.sh /workspace/entrypoint.sh
-RUN chmod a+x /workspace/entrypoint.sh
-ENTRYPOINT ["/workspace/entrypoint.sh"]
+COPY entrypoint.sh .
+RUN chmod a+x entrypoint.sh
+ENTRYPOINT ["./entrypoint.sh"]
