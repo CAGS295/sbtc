@@ -1,0 +1,32 @@
+#!/usr/bin/env bash
+set -ueo >/dev/null
+
+# build tests image
+tests/bin/build.sh
+
+#up all services. check running docker inside docker
+docker compose -f docker-compose.yml down
+docker compose -f docker-compose.yml up -d
+
+API_URL=http://localhost:20443/v2/info
+
+# makes sure the node is ready before proceeding
+# stacks node get info
+echo "Waiting on Stacks API"
+while ! curl -s $API_URL >/dev/null; do
+    sleep 1
+done
+
+DEV_READY_HEIGHT=205
+
+# bitcoind get info
+echo "Waiting on burn block height $DEV_READY_HEIGHT"
+while [ "$(curl -s $API_URL | jq '.burn_block_height')" -lt $DEV_READY_HEIGHT ]; do
+    sleep 2
+done
+# any other service checks
+
+# run tests, TODO bundle with an attribute tag
+docker exec -t testbed "cargo test $@"
+
+docker compose -f docker-compose.yml down

@@ -1,0 +1,5 @@
+#!/usr/bin/env sh
+
+LOC=$(dirname $(dirname $0))
+
+docker compose -f $LOC/docker-compose.yml up -d
