@@ -23,5 +23,3 @@ COPY --from=build /usr/local/cargo/bin/romeo /usr/local/bin
 
 ENTRYPOINT ["romeo"]
 CMD ["-c", "/romeo/config.json"]
-
-
