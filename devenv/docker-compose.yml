@@ -3,14 +3,13 @@ version: '3.2'
 services:
   bitcoin:
     image: bitcoin:latest
-    container_name: bitcoin
     build:
       context: ./bitcoin/docker
       args:
         VERSION: '25.0'
     ports:
-      - 18444:18444
-      - 18443:18443
+      - 18444
+      - 18443
     environment:
       - 'BTC_NETWORK=regtest'
       - 'BTC_DISABLEWALLET=0'
@@ -21,15 +20,13 @@ services:
       - 'BTC_RPCUSER=devnet'
   postgres:
     image: postgres:15-alpine
-    container_name: postgres
     ports:
-      - 5432:5432
+      - 5432
     environment:
       - POSTGRES_USER=postgres
       - POSTGRES_PASSWORD=postgres
   miner:
     image: miner:latest
-    container_name: miner
     build:
       context: ./miner/docker
     depends_on:
@@ -39,7 +36,6 @@ services:
       BTC_BLOCK_GEN_TIME: 10
   stacks:
     image: stacks:latest
-    container_name: stacks
     build:
       context: ./stacks/docker
       args:
@@ -47,8 +43,8 @@ services:
         GIT_URI: https://github.com/stacks-network/stacks-blockchain.git
         GIT_BRANCH: develop
     ports:
-      - 20444:20444
-      - 20443:20443
+      - 20444
+      - 20443
     depends_on:
       - bitcoin
       - miner
@@ -57,15 +53,14 @@ services:
       - STACKS_LOG_JSON=0
   stacks-api:
     image: stacks-api:latest
-    container_name: stacks-api
     build:
       context: ./stacks-api/docker
       args:
        GIT_URI: 'https://github.com/hirosystems/stacks-blockchain-api.git'
        GIT_BRANCH: 'v7.3.0'
     ports:
-      - 3999:3999
-      - 3700:3700 
+      - 3999
+      - 3700 
     depends_on:
       - postgres
       - stacks
@@ -88,7 +83,6 @@ services:
       - API_DOCS_URL=http://localhost:3999/doc
   stacks-explorer:
     image: stacks-explorer
-    container_name: stacks-explorer
     build:
       context: ./stacks-explorer/docker
       args:
@@ -96,7 +90,7 @@ services:
         GIT_URI: https://github.com/hirosystems/explorer.git
         GIT_BRANCH: v1.119.0
     ports:
-      - 3000:3000
+      - 3000
     depends_on:
       - bitcoin
       - stacks
@@ -106,7 +100,6 @@ services:
       - NEXT_PUBLIC_MAINNET_API_SERVER=http://127.0.0.1:3999
   bitcoin-explorer:
     image: bitcoin-explorer:latest
-    container_name: bitcoin-explorer
     build:
       context: ./bitcoin-explorer/docker
       args:
@@ -114,7 +107,7 @@ services:
         GIT_URI: https://github.com/janoside/btc-rpc-explorer.git
         GIT_BRANCH: 'v3.4.0'
     ports:
-      - 3002:3002
+      - 3002
     depends_on:
       - bitcoin
       - miner
@@ -130,11 +123,10 @@ services:
       BTCEXP_UI_THEME: dark
   electrs:
     image: electrs:latest
-    container_name: electrs
     build:
       context: ./electrs/docker
     ports:
-      - 60401:60401
+      - 60401
     depends_on:
       - bitcoin
       - miner
@@ -142,7 +134,6 @@ services:
       RUST_BACKTRACE: 1
   sbtc:
     image: sbtc:latest
-    container_name: sbtc
     build:
       context: ./../
       dockerfile: ./devenv/sbtc/docker/Dockerfile
@@ -159,7 +150,6 @@ services:
       - $PWD/sbtc/docker/config.json:/romeo/config.json
   sbtc-bridge-web:
     image: sbtc-bridge-web:latest
-    container_name: sbtc-bridge-web
     build:
       context: ./sbtc-bridge-web/docker
     depends_on:
@@ -171,4 +161,4 @@ services:
       - miner
       - sbtc
     ports:
-      - 8080:8080
+      - 8080
