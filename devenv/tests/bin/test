@@ -1,32 +1,59 @@
 #!/usr/bin/env bash
 set -ueo >/dev/null
 
-# build tests image
-tests/bin/build.sh
+project_name() {
+    local input="$1"
+    local filter="${input//[![:alnum:]]/_}"
+    echo "$filter"
+}
 
-#up all services. check running docker inside docker
-docker compose -f docker-compose.yml down
-docker compose -f docker-compose.yml up -d
+filters=("package(romeo)" "test(deposit_parse)" "test(deposit_output)")
+filter_union=""
+ids=()
+projects=()
 
-API_URL=http://localhost:20443/v2/info
+for filter in "${filters[@]}"; do
+    project=$(project_name $filter)
+    echo Working project: $project
+    projects+=($project)
 
-# makes sure the node is ready before proceeding
-# stacks node get info
-echo "Waiting on Stacks API"
-while ! curl -s $API_URL >/dev/null; do
-    sleep 1
+    ./tests/bin/down docker-compose.yml $project
+    ./tests/bin/up docker-compose.yml $project
+
+    network=${project}_default
+    id=$(docker run -td --network $network -e PROJECT_NAME=$project testbed "$filter")
+    ids+=($id)
+    echo with container id: $id
+
+    if [ -z "$filter_union" ]; then
+        filter_union=$filter
+    else
+        filter_union="$filter_union | $filter"
+    fi
+
 done
 
-DEV_READY_HEIGHT=205
+project="remainder--"
+echo Working project: $project
+projects+=($project)
 
-# bitcoind get info
-echo "Waiting on burn block height $DEV_READY_HEIGHT"
-while [ "$(curl -s $API_URL | jq '.burn_block_height')" -lt $DEV_READY_HEIGHT ]; do
-    sleep 2
+./tests/bin/down docker-compose.yml $project
+./tests/bin/up docker-compose.yml $project
+
+network=${project}_default
+id=($(docker run -itd --network $network -e PROJECT_NAME=$project testbed "not ($filter_union)"))
+ids+=($id)
+echo with container id: $id
+
+for id in ${ids[@]}; do
+    exit_code=$(docker wait $id)
+    echo Runner: $id exited with err_no: $exit_code
+    if [ $exit_code -ne 0 ]; then
+        docker logs -f $id
+        exit $exit_code
+    fi
 done
-# any other service checks
 
-# run tests, TODO bundle with an attribute tag
-docker exec -t testbed "cargo test $@"
-
-docker compose -f docker-compose.yml down
+for project in ${projects[@]}; do
+    ./tests/bin/down docker-compose.yml $project
+done
